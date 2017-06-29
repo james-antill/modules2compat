@@ -478,7 +478,7 @@ for mod in modmd:
         nevras = []
 
     pkgs = []
-    for nevra in nevras:
+    for nevra in sorted(nevras):
         n,e,v,r,a = nevra_split(nevra)
         if a == 'src': continue
         rpm_fname = "%s-%s-%s.%s.rpm" % (n, v, r, a)
