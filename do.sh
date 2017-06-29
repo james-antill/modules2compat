@@ -22,3 +22,5 @@ for i in modular modular-rawhide modular-nodejs; do
 done
 
 ./build-repos.sh fedora-compat-*
+
+./publish.sh www
