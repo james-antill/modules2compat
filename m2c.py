@@ -429,16 +429,21 @@ class cpkg(object):
 
 # cpkg = yum.packages.YumLocalPackage
 modmd = list(yaml.load_all(modmd))
-for mod in modmd:
+num = 0
+for mod in sorted(modmd, key=lambda x: (x['data']['name'],
+                                        x['data']['stream'],
+                                        x['data'].get('version', ''))):
+    num += 1
+    prog = "(%d/%d)" % (num, len(modmd))
     if mod['data']['name'] in blacklist['mods']:
         print '=' * 79
-        print ' ' * 30, "Blacklisted module:", mod['data']['name']
+        print ' ' * 15, "Blacklisted module:", mod['data']['name'], prog
         print '-' * 79
         continue
 
     mn = mod['data']['name'] + '-' + mod['data']['stream']
     print '=' * 79
-    print ' ' * 30, mn
+    print ' ' * 30, mn, prog
     print '-' * 79
     if 'api' in mod['data']:
         api = mod['data']['api']
