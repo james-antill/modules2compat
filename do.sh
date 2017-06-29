@@ -2,7 +2,8 @@
 
 reposync=reposync
 
-if [ -x /usr/bin/dnf ]; then
+# DNF reposync isn't compatible, as usual.
+if false && [ -x /usr/bin/dnf ]; then
   reposync="dnf reposync"
 fi
 
