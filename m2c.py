@@ -2,6 +2,7 @@
 
 import os
 import sys
+import shutil
 
 import gzip
 
@@ -33,8 +34,32 @@ else:
 if outdir[0] != '/':
     outdir = os.getcwd() + '/' + outdir
 
+if not os.path.isdir(rpmdir):
+    print >>sys.stderr, " Error: RPMdir:", rpmdir
+    sys.exit(1)
+
 if not os.path.exists(outdir):
     os.makedirs(outdir)
+
+# Blacklist config. files ... So we can not convert some mods/rpms.
+blacklist = {'rpms' : {}, 'mods' : {}}
+def _read_blacklist(fname):
+    if not os.path.exists(fname):
+        return None
+    ret = []
+    for line in open(fname):
+        line = line.strip()
+        if line and line[0] == '#':
+            continue
+        ret.append(line)
+    return ret
+def _read_blacklists(dname, ext):
+    ret = _read_blacklist("%s/blacklist-n-%s.conf" % (dname, ext))
+    if ret is None:
+        ret = _read_blacklist("%s/../blacklist-n-%s.conf" % (dname, ext))
+    return ret or {}
+blacklist['mods'] = _read_blacklists(outdir, "mods")
+blacklist['rpms'] = _read_blacklists(outdir, "rpms")
 
 def version_tuple_to_string(evrTuple):
     """
@@ -46,7 +71,7 @@ def version_tuple_to_string(evrTuple):
     """
     (e, v, r) = evrTuple
     s = ""
-    
+
     if e not in [0, '0', None]:
         s += '%s:' % e
     if v is not None:
@@ -405,29 +430,55 @@ class cpkg(object):
 # cpkg = yum.packages.YumLocalPackage
 modmd = list(yaml.load_all(modmd))
 for mod in modmd:
+    if mod['data']['name'] in blacklist['mods']:
+        print '=' * 79
+        print ' ' * 30, "Blacklisted module:", mod['data']['name']
+        print '-' * 79
+        continue
+
     mn = mod['data']['name'] + '-' + mod['data']['stream']
     print '=' * 79
     print ' ' * 30, mn
     print '-' * 79
     if 'api' in mod['data']:
         api = mod['data']['api']
-        api['rpms'] = [mn + '-' + n for n in api['rpms']]
+
+        # Change non-blocklisted names in api/rpms
+        nrpms = []
+        for n in api['rpms']:
+            if n not in blacklist['rpms']:
+                n = mn + '-' + n
+        nrpms.append(n)
+        api['rpms'] = nrpms
 
     artifacts = mod['data']['artifacts']
     nevras = artifacts['rpms'] # Need old ones for below...
-    artifacts['rpms'] = [mn + '-' + n for n in artifacts['rpms']]
+
+    # Change non-blocklisted nevras in artifacts/rpms
+    nnevras = []
+    for nevra in nevras:
+        n,e,v,r,a = nevra_split(nevra)
+        if n not in blacklist['rpms']:
+            nevra = mn + '-' + nevra
+        nnevras.append(nevra)
+    artifacts['rpms'] = nnevras
 
     if 'profiles' in mod['data']:
         for profile in mod['data']['profiles']:
             profile = mod['data']['profiles'][profile]
-            profile['rpms'] = [mn + '-' + n for n in profile['rpms']]
+            # Change non-blocklisted names in profile/rpms
+            nrpms = []
+            for n in profile['rpms']:
+                if n not in blacklist['rpms']:
+                    n = mn + '-' + n
+            nrpms.append(n)
+            profile['rpms'] = nrpms
 
     if modmd_only:
         nevras = []
 
     pkgs = []
     for nevra in nevras:
-        print "Loading:", nevra
         n,e,v,r,a = nevra_split(nevra)
         if a == 'src': continue
         rpm_fname = "%s-%s-%s.%s.rpm" % (n, v, r, a)
@@ -437,6 +488,16 @@ for mod in modmd:
         if not os.path.exists(filename):
             print >>sys.stderr, " Warning: RPM NOT FOUND:", rpm_fname
             continue
+        if n in blacklist['rpms']:
+            if not build_rpm:
+                print "Blacklisted RPM:", nevra
+            else:
+                print "Copying RPM:", nevra
+                odir = "%s/%s" % (outdir, a)
+                os.makedirs(odir)
+                shutil.copy2(filename, odir)
+            continue
+        print "Loading:", nevra
         pkg = cpkg(filename=filename)
         pkgs.append(pkg)
 
@@ -447,7 +508,6 @@ for mod in modmd:
             modprovs.add(n)
 
     for pkg in sorted(pkgs):
-        print "Rebuilding:", pkg
         n, a, e, v, r = pkg.pkgtup
         rpm_fname = "%s-%s-%s.%s.rpm" % (n, v, r, a)
         filename = rpmdir + '/' + rpm_fname
@@ -455,6 +515,11 @@ for mod in modmd:
             filename = rpmdir + '/' + n[0] + '/' + rpm_fname
 
         nn = mn + '-' + pkg.name
+        if build_rpm:
+            if os.path.exists("%s/%s/%s-%s" % (outdir, a, mn, rpm_fname)):
+                print "Cached:", pkg
+                continue
+        print "Rebuilding:", pkg
 
         os.system("rpm2cpio " + filename + " > " + nn + "-built.cpio")
         os.system("tar -cf " + nn + ".tar " + nn + "-built.cpio")

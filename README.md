@@ -13,3 +13,6 @@ through each module within it and:
    module; so the rpm requires data won't pull in a packge not contained within
    the module.
 3. Change the module data to reflect the new rpm names.
+
+We also obey the blacklist-n-mods.conf and blacklist-n-rpms.conf files for
+names of modules and rpms that we don't want to convert.

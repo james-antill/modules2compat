@@ -6,6 +6,7 @@ if [ -x /usr/bin/dnf ]; then
   reposync="dnf reposync"
 fi
 
+rm -f */*-modules.yaml.gz
 $reposync --config=reposync.conf --download-metadata
 
 for i in modular modular-rawhide modular-nodejs; do
