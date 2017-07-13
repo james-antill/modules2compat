@@ -763,7 +763,7 @@ for mod in iter_mods(modmd):
         rpm_fname = "%s-%s-%s.%s.rpm" % (n, v, r, a)
         filename = rpmdir + '/' + rpm_fname
         if not os.path.exists(filename):
-            filename = rpmdir + '/' + n[0] + '/' + rpm_fname
+            filename = rpmdir + '/' + n[0].lower() + '/' + rpm_fname
 
         nn = mn + '-' + pkg.name
         if build_rpm:
