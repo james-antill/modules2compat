@@ -22,7 +22,7 @@ build_rpm = True
 if len(sys.argv) < 2:
     _usage()
 
-maincmd = maincmd
+maincmd = sys.argv[1]
 nsubcmds = len(sys.argv) - 2
 
 def _usage(code=1):
