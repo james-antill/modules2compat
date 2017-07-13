@@ -16,3 +16,6 @@ through each module within it and:
 
 We also obey the blacklist-n-mods.conf and blacklist-n-rpms.conf files for
 names of modules and rpms that we don't want to convert.
+
+Also m2c.py has a bunch of commands for looking at module repodata, and altering
+it in specific ways (extracting modules, renaming, merging, or just listing).

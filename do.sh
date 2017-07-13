@@ -12,12 +12,7 @@ $reposync --config=reposync.conf --download-metadata
 
 for i in modular modular-rawhide modular-nodejs; do
 
- mkdir fedora-compat-$i || true
- if [ -d fedora-$i/Packages ]; then
-    ./m2c.py fedora-$i/*-modules.yaml.gz fedora-$i/Packages fedora-compat-$i
- else
-    ./m2c.py fedora-$i/*-modules.yaml.gz fedora-$i fedora-compat-$i
- fi
+  ./m2c.py convert fedora-compat-$i fedora-$i/*-modules.yaml.gz
 
 done
 

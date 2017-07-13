@@ -3,6 +3,7 @@
 import os
 import sys
 import shutil
+import fnmatch
 
 import gzip
 
@@ -18,28 +19,80 @@ _rpm_has_new_weakdeps = hasattr(rpm, 'RPMTAG_ENHANCENAME')
 modmd_only = False
 build_rpm = True
 
-if len(sys.argv) < 4:
-    print >>sys.stderr, " Args: <Combined modmd> <rpmdir> <outdir>"
-    sys.exit(1)
+if len(sys.argv) < 2:
+    _usage()
 
-modmd  = sys.argv[1]
-rpmdir = sys.argv[2]
-outdir = sys.argv[3]
+maincmd = maincmd
+nsubcmds = len(sys.argv) - 2
 
-if modmd.endswith(".gz"):
-    modmd = gzip.open(modmd)
+def _usage(code=1):
+    print >>sys.stderr, """\
+ Args: <cmd> ..."
+    convert       <outdir> <Combined modmd>"
+    extract       <outdir> <Combined modmd> <module>..."
+    rename-stream <outdir> <Combined modmd> <newstram> <module>..."
+    list          <Combined modmd>..."
+    merge         <outdir> <Combined modmd>..."
+    help"""
+    sys.exit(code)
+
+if False: pass
+elif maincmd == 'list':
+    if nsubcmds < 1:
+        _usage()
+
+elif maincmd == 'extract':
+    if nsubcmds < 3:
+        _usage()
+
+    outdir = sys.argv[2]
+
+    if not os.path.exists(outdir):
+        os.makedirs(outdir)
+
+elif maincmd == 'rename-stream':
+    if nsubcmds < 4:
+        _usage()
+
+    outdir = sys.argv[2]
+
+    if not os.path.exists(outdir):
+        os.makedirs(outdir)
+
+elif maincmd == 'merge':
+    if nsubcmds < 2:
+        _usage()
+
+    outdir = sys.argv[2]
+
+    if not os.path.exists(outdir):
+        os.makedirs(outdir)
+
+elif maincmd == 'convert':
+    if nsubcmds < 2:
+        _usage()
+    outdir = sys.argv[2]
+
+    if outdir[0] != '/':
+        outdir = os.getcwd() + '/' + outdir
+
+    if not os.path.exists(outdir):
+        os.makedirs(outdir)
+
+elif maincmd == 'help':
+    _usage(0)
 else:
-    modmd = open(mdmd)
+    _usage()
 
-if outdir[0] != '/':
-    outdir = os.getcwd() + '/' + outdir
+# Everyone needs a modmd...
+def _get_modmd(arg):
+    modmd  = arg
 
-if not os.path.isdir(rpmdir):
-    print >>sys.stderr, " Error: RPMdir:", rpmdir
-    sys.exit(1)
-
-if not os.path.exists(outdir):
-    os.makedirs(outdir)
+    if modmd.endswith(".gz"):
+        modmd = gzip.open(modmd)
+    else:
+        modmd = open(modmd)
+    return modmd
 
 # Blacklist config. files ... So we can not convert some mods/rpms.
 blacklist = {'rpms' : {}, 'mods' : {}}
@@ -58,8 +111,9 @@ def _read_blacklists(dname, ext):
     if ret is None:
         ret = _read_blacklist("%s/../blacklist-n-%s.conf" % (dname, ext))
     return ret or {}
-blacklist['mods'] = _read_blacklists(outdir, "mods")
-blacklist['rpms'] = _read_blacklists(outdir, "rpms")
+if maincmd == 'convert':
+    blacklist['mods'] = _read_blacklists(outdir, "mods")
+    blacklist['rpms'] = _read_blacklists(outdir, "rpms")
 
 def version_tuple_to_string(evrTuple):
     """
@@ -132,8 +186,6 @@ def hdrFromPackage(ts, package):
     except OSError, e:
         raise
 
-    # XXX: We should start a readonly ts here, so we don't get the options
-    # from the other one (sig checking, etc)
     try:
         hdr = ts.hdrFromFdno(fdno)
     except rpm.error, e:
@@ -236,8 +288,7 @@ class cpkg(object):
 
 
     def __getattr__(self, thing):
-        #FIXME - if an error - return AttributeError, not KeyError 
-        # ONLY FIX THIS AFTER THE API BREAK
+        # API - if an error - return AttributeError, not KeyError
         if thing.startswith('__') and thing.endswith('__'):
             # If these existed, then we wouldn't get here ...
             # So these are missing.
@@ -256,10 +307,10 @@ class cpkg(object):
     def __str__(self):
         if self.epoch == '0':
             val = '%s-%s-%s.%s' % (self.name, self.version, self.release,
-                                        self.arch)
+                                   self.arch)
         else:
             val = '%s-%s:%s-%s.%s' % (self.name, self.epoch, self.version,
-                                           self.release, self.arch)
+                                      self.release, self.arch)
         return val
 
     def verCMP(self, other):
@@ -298,7 +349,7 @@ class cpkg(object):
         prcotype = {"weak_requires" : "recommends",
                     "info_requires" : "suggests",
                     "weak_reverse_requires" : "supplements",
-                    "info_reverse_requires" : "enhances"}.get(prcotype,prcotype)
+                    "info_reverse_requires" : "enhances"}.get(prcotype, prcotype)
         prcos = self.prco.get(prcotype, [])
 
         if printable:
@@ -427,12 +478,166 @@ class cpkg(object):
         return self._returnFileEntries(ftype,primary_only)
 
 
-# cpkg = yum.packages.YumLocalPackage
+def iter_mods(modmd):
+    return sorted(modmd, key=lambda x: (x['data']['name'],
+                                        x['data']['stream'],
+                                        x['data'].get('version', '')))
+
+def write_modmd(fname, modmd):
+    fo = open(fname + ".tmp", 'w')
+    print >>fo, yaml.dump_all(modmd, explicit_start=True)
+    os.rename(fname + '.tmp', fname)
+
+def read_modmd(fo):
+    return list(yaml.load_all(fo))
+
+def iter_nevras(nevras):
+    for nevra in sorted(nevras):
+        n,e,v,r,a = nevra_split(nevra)
+        if a == 'src': continue
+        rpm_fname = "%s-%s-%s.%s.rpm" % (n, v, r, a)
+        yield n,e,v,r,a
+
+def mod_fname2rpmdir(mod_fname):
+    rpmdir = os.path.dirname(mod_fname)
+    if os.path.basename(rpmdir) == 'repodata':
+        rpmdir = os.path.dirname(rpmdir)
+    if os.path.exists(rpmdir + '/Packages'):
+        rpmdir += '/Packages'
+    return rpmdir
+
+def copy_rpms(outdir, mod, mod_fname):
+    artifacts = mod['data']['artifacts']
+    for n,e,v,r,a in iter_nevras(artifacts['rpms']):
+        rpm_fname = "%s-%s-%s.%s.rpm" % (n, v, r, a)
+
+        rpmdir = mod_fname2rpmdir(mod_fname)
+
+        filename = rpmdir + '/' + rpm_fname
+        if not os.path.exists(filename):
+            filename = rpmdir + '/' + n[0] + '/' + rpm_fname
+        if not os.path.exists(filename):
+            print >>sys.stderr, " Warning: RPM NOT FOUND:", rpm_fname
+            continue
+
+        print "Copying RPM:", rpm_fname
+        shutil.copy2(filename, outdir)
+
+def _mn(mod):
+    return mod['data']['name']
+def _mns(mod):
+    return mod['data']['name'] + '-' + mod['data']['stream']
+def _mnsv(mod):
+    ver = str(mod['data']['version'])
+    mnv = mod['data']['name'] + '-' + mod['data']['stream'] + '-' + ver
+    return mnv
+
+def matched_iter_mods(modmd, ids):
+    for mod in iter_mods(modmd):
+        for uid in ids:
+            if fnmatch.fnmatch(_mn(mod), uid):
+                break
+            if fnmatch.fnmatch(_mns(mod), uid):
+                break
+            if fnmatch.fnmatch(_mnsv(mod), uid):
+                break
+        else:
+            continue
+        yield mod
+
+
+if False: pass
+
+elif maincmd == 'list':
+    for arg in sys.argv[2:]:
+        modmd =  _get_modmd(arg)
+        modmd = read_modmd(modmd)
+        num = 0
+        for mod in iter_mods(modmd):
+            num += 1
+            prog = "(%d/%d)" % (num, len(modmd))
+            mn = _mns(mod)
+            print mn, prog
+    sys.exit(0)
+
+elif maincmd == 'merge':
+    allmodmd = {}
+    mod_fnames = {}
+    for arg in sys.argv[3:]:
+        modmd =  _get_modmd(arg)
+        modmd = read_modmd(modmd)
+        for mod in iter_mods(modmd):
+            allmodmd[_mnsv(mod)] = mod
+            mod_fnames[_mnsv(mod)] = arg
+
+    mmods = list(iter_mods(allmodmd.values()))
+    
+    num = 0
+    for mod in mmods:
+        num += 1
+        prog = "(%d/%d)" % (num, len(modmd))
+        mn = _mns(mod)
+        print '=' * 79
+        print ' ' * 30, mn, prog
+        print '-' * 79
+
+        copy_rpms(outdir, mod, mod_fnames[_mnsv(mod)])
+
+    write_modmd(outdir + '/' + 'modmd', mmods)
+    sys.exit(0)
+
+elif maincmd == 'extract':
+    mod_fname = sys.argv[3]
+    modmd =  _get_modmd(mod_fname)
+    modmd = read_modmd(modmd)
+    ids = set(sys.argv[4:])
+    mmods = list(matched_iter_mods(modmd, ids))
+        
+    num = 0
+    for mod in mmods:
+        num += 1
+        prog = "(%d/%d)" % (num, len(mmods))
+        mn = _mns(mod)
+        print '=' * 79
+        print ' ' * 30, mn, prog
+        print '-' * 79
+
+        copy_rpms(outdir, mod, mod_fname)
+
+    write_modmd(outdir + '/' + 'modmd', mmods)
+    sys.exit(0)
+
+elif maincmd == 'rename-stream':
+    mod_fname = sys.argv[3]
+    modmd =  _get_modmd(mod_fname)
+    modmd = read_modmd(modmd)
+    nstream = sys.argv[4]
+    ids = set(sys.argv[5:])
+    mmods = list(matched_iter_mods(modmd, ids))
+        
+    num = 0
+    for mod in mmods:
+        num += 1
+        prog = "(%d/%d)" % (num, len(mmods))
+        mn = _mns(mod)
+        mod['stream'] = nstream
+        nmn = _mns(mod)
+        print '=' * 79
+        print mn, '=>', nmn, prog
+        print '-' * 79
+
+    write_modmd(outdir + '/' + 'modmd', mmods)
+    sys.exit(0)
+
+elif maincmd == 'convert':
+    pass # Below...
+
+modmd = sys.argv[3]
+rpmdir = mod_fname2rpmdir(modmd)
+modmd = _get_modmd(modmd)
 modmd = list(yaml.load_all(modmd))
 num = 0
-for mod in sorted(modmd, key=lambda x: (x['data']['name'],
-                                        x['data']['stream'],
-                                        x['data'].get('version', ''))):
+for mod in iter_mods(modmd):
     num += 1
     prog = "(%d/%d)" % (num, len(modmd))
     if mod['data']['name'] in blacklist['mods']:
@@ -441,7 +646,7 @@ for mod in sorted(modmd, key=lambda x: (x['data']['name'],
         print '-' * 79
         continue
 
-    mn = mod['data']['name'] + '-' + mod['data']['stream']
+    mn = _mns(mod)
     print '=' * 79
     print ' ' * 30, mn, prog
     print '-' * 79
@@ -499,7 +704,6 @@ for mod in sorted(modmd, key=lambda x: (x['data']['name'],
             else:
                 print "Copying RPM:", nevra
                 odir = "%s/%s" % (outdir, a)
-                os.makedirs(odir)
                 shutil.copy2(filename, odir)
             continue
         print "Loading:", nevra
@@ -574,11 +778,11 @@ for mod in sorted(modmd, key=lambda x: (x['data']['name'],
 %%%s -p %s
 %s
 """ % (sname, prog, getattr(pkg, tname) or '')
-        # FIXME: preinflags etc.
+        # FIXME: preinflags
 
         filelist = \
         "\n".join(pkg.returnFileEntries('file')).replace(" ", "?") + "\n"
-        # FIXME: other files, and attr
+        # FIXME: other files, and file attributes
         # "\n".join(pkg.files['ghost']) +
         # "\n".join(pkg.files['dir']) +
 
@@ -659,5 +863,4 @@ rm %%{name}-built.cpio
         os.remove(nn + ".spec")
         os.remove(nn + ".tar.gz")
 
-fo = open(outdir + '/' + 'modmd', 'w')
-print >>fo, yaml.dump_all(modmd, explicit_start=True)
+write_modmd(outdir + '/' + 'modmd', modmd)
