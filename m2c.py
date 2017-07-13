@@ -520,7 +520,7 @@ def iter_rpms(mod, mod_fname):
 
         filename = rpmdir + '/' + rpm_fname
         if not os.path.exists(filename):
-            filename = rpmdir + '/' + n[0] + '/' + rpm_fname
+            filename = rpmdir + '/' + n[0].lower() + '/' + rpm_fname
         if not os.path.exists(filename):
             filename = None
         yield (n,e,v,r,a), (rpm_fname, filename)
@@ -734,7 +734,7 @@ for mod in iter_mods(modmd):
         rpm_fname = "%s-%s-%s.%s.rpm" % (n, v, r, a)
         filename = rpmdir + '/' + rpm_fname
         if not os.path.exists(filename):
-            filename = rpmdir + '/' + n[0] + '/' + rpm_fname
+            filename = rpmdir + '/' + n[0].lower() + '/' + rpm_fname
         if not os.path.exists(filename):
             print >>sys.stderr, " Warning: RPM NOT FOUND:", rpm_fname
             continue
