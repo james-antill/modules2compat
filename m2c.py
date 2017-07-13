@@ -615,7 +615,7 @@ elif maincmd == 'merge':
     num = 0
     for mod in mmods:
         num += 1
-        prog = "(%d/%d)" % (num, len(modmd))
+        prog = "(%*d/%d)" % (len(str(len(modmd))), num, len(modmd))
         mn = _mnsv_ui(mod)
         print '=' * 79
         print ' ' * 30, mn, prog
@@ -636,7 +636,7 @@ elif maincmd == 'extract':
     num = 0
     for mod in mmods:
         num += 1
-        prog = "(%d/%d)" % (num, len(mmods))
+        prog = "(%*d/%d)" % (len(str(len(mmods))), num, len(mmods))
         mn = _mnsv_ui(mod)
         print '=' * 79
         print ' ' * 30, mn, prog
@@ -654,16 +654,18 @@ elif maincmd == 'rename-stream':
     nstream = sys.argv[4]
     ids = set(sys.argv[5:])
     mmods = list(matched_iter_mods(modmd, ids))
-        
+    expand = _max_ns(modmd)
+
     num = 0
     for mod in mmods:
         num += 1
-        prog = "(%d/%d)" % (num, len(mmods))
-        mn = _mnsv_ui(mod)
-        mod['stream'] = nstream
-        nmn = _mns(mod)
+        prog = "(%*d/%d)" % (len(str(len(mmods))), num, len(mmods))
+        mn = _mnsv_ui(mod, expand)
+        mod['data']['stream'] = nstream
+        nmn = _mnsv_ui(mod)
         print '=' * 79
-        print mn, '=>', nmn, prog
+        print mn, prog
+        print '  ', '=>', nmn
         print '-' * 79
 
     write_modmd(outdir + '/' + 'modmd', mmods)
@@ -679,7 +681,7 @@ modmd = list(yaml.load_all(modmd))
 num = 0
 for mod in iter_mods(modmd):
     num += 1
-    prog = "(%d/%d)" % (num, len(modmd))
+    prog = "(%*d/%d)" % (len(str(len(modmd))), num, len(modmd))
     if mod['data']['name'] in blacklist['mods']:
         print '=' * 79
         print ' ' * 15, "Blacklisted module:", mod['data']['name'], prog
