@@ -30,14 +30,19 @@ def _usage(code=1):
  Args: <cmd> ...
     convert       <outdir> <Combined modmd>
     extract       <outdir> <Combined modmd> <module>...
-    rename-stream <outdir> <Combined modmd> <newstram> <module>...
     list          <Combined modmd>...
     merge         <outdir> <Combined modmd>...
+    rename-stream <outdir> <Combined modmd> <newstram> <module>...
+    rpms          <Combined modmd>...
     help"""
     sys.exit(code)
 
 if False: pass
 elif maincmd == 'list':
+    if nsubcmds < 1:
+        _usage()
+
+elif maincmd == 'rpms':
     if nsubcmds < 1:
         _usage()
 
@@ -506,7 +511,7 @@ def mod_fname2rpmdir(mod_fname):
         rpmdir += '/Packages'
     return rpmdir
 
-def copy_rpms(outdir, mod, mod_fname):
+def iter_rpms(mod, mod_fname):
     artifacts = mod['data']['artifacts']
     for n,e,v,r,a in iter_nevras(artifacts['rpms']):
         rpm_fname = "%s-%s-%s.%s.rpm" % (n, v, r, a)
@@ -517,9 +522,14 @@ def copy_rpms(outdir, mod, mod_fname):
         if not os.path.exists(filename):
             filename = rpmdir + '/' + n[0] + '/' + rpm_fname
         if not os.path.exists(filename):
+            filename = None
+        yield (n,e,v,r,a), (rpm_fname, filename)
+
+def copy_rpms(outdir, mod, mod_fname):
+    for (n,e,v,r,a), (rpm_fname, filename) in iter_rpms(mod, mod_fname):
+        if filename is None:
             print >>sys.stderr, " Warning: RPM NOT FOUND:", rpm_fname
             continue
-
         print "Copying RPM:", rpm_fname
         shutil.copy2(filename, outdir)
 
@@ -530,6 +540,13 @@ def _mns(mod):
 def _mnsv(mod):
     ver = str(mod['data']['version'])
     mnv = mod['data']['name'] + '-' + mod['data']['stream'] + '-' + ver
+    return mnv
+def _mnsv_ui(mod, expand=0):
+    ver = str(mod['data']['version'])
+    mnv = mod['data']['name'] + '-' + mod['data']['stream']
+    if expand > len(mnv):
+        mnv += ' ' * (expand - len(mnv))
+    mnv += ' ' + ver
     return mnv
 
 def matched_iter_mods(modmd, ids):
@@ -545,6 +562,8 @@ def matched_iter_mods(modmd, ids):
             continue
         yield mod
 
+def _max_ns(mods):
+    return max((len(_mns(mod)) for mod in iter_mods(modmd)))
 
 if False: pass
 
@@ -552,12 +571,33 @@ elif maincmd == 'list':
     for arg in sys.argv[2:]:
         modmd =  _get_modmd(arg)
         modmd = read_modmd(modmd)
+        expand = _max_ns(modmd)
         num = 0
         for mod in iter_mods(modmd):
             num += 1
-            prog = "(%d/%d)" % (num, len(modmd))
-            mn = _mns(mod)
+            prog = "(%*d/%d)" % (len(str(len(modmd))), num, len(modmd))
+            mn = _mnsv_ui(mod, expand)
             print mn, prog
+    sys.exit(0)
+
+elif maincmd == 'rpms':
+    for arg in sys.argv[2:]:
+        modmd =  _get_modmd(arg)
+        modmd = read_modmd(modmd)
+        expand = _max_ns(modmd)
+        num = 0
+        for mod in iter_mods(modmd):
+            num += 1
+            prog = "(%*d/%d)" % (len(str(len(modmd))), num, len(modmd))
+            mn = _mnsv_ui(mod, expand)
+            print '=' * 79
+            print ' ' * 10, mn, prog
+            print '-' * 79
+            for (n,e,v,r,a), (rpm_fname, filename) in iter_rpms(mod, arg):
+                if filename is None:
+                    print '  **', rpm_fname
+                else:
+                    print '    ', rpm_fname
     sys.exit(0)
 
 elif maincmd == 'merge':
@@ -576,7 +616,7 @@ elif maincmd == 'merge':
     for mod in mmods:
         num += 1
         prog = "(%d/%d)" % (num, len(modmd))
-        mn = _mns(mod)
+        mn = _mnsv_ui(mod)
         print '=' * 79
         print ' ' * 30, mn, prog
         print '-' * 79
@@ -597,7 +637,7 @@ elif maincmd == 'extract':
     for mod in mmods:
         num += 1
         prog = "(%d/%d)" % (num, len(mmods))
-        mn = _mns(mod)
+        mn = _mnsv_ui(mod)
         print '=' * 79
         print ' ' * 30, mn, prog
         print '-' * 79
@@ -619,7 +659,7 @@ elif maincmd == 'rename-stream':
     for mod in mmods:
         num += 1
         prog = "(%d/%d)" % (num, len(mmods))
-        mn = _mns(mod)
+        mn = _mnsv_ui(mod)
         mod['stream'] = nstream
         nmn = _mns(mod)
         print '=' * 79
