@@ -27,12 +27,12 @@ nsubcmds = len(sys.argv) - 2
 
 def _usage(code=1):
     print >>sys.stderr, """\
- Args: <cmd> ..."
-    convert       <outdir> <Combined modmd>"
-    extract       <outdir> <Combined modmd> <module>..."
-    rename-stream <outdir> <Combined modmd> <newstram> <module>..."
-    list          <Combined modmd>..."
-    merge         <outdir> <Combined modmd>..."
+ Args: <cmd> ...
+    convert       <outdir> <Combined modmd>
+    extract       <outdir> <Combined modmd> <module>...
+    rename-stream <outdir> <Combined modmd> <newstram> <module>...
+    list          <Combined modmd>...
+    merge         <outdir> <Combined modmd>...
     help"""
     sys.exit(code)
 
